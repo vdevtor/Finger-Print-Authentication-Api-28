@@ -4,30 +4,32 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.biometrics.BiometricPrompt
-import android.os.Build
 import android.os.Bundle
-import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.biometric.BiometricPrompt
 import androidx.core.app.ActivityCompat
+import androidx.core.os.CancellationSignal
 import com.avenueeco.trybiometricauthentication.databinding.ActivityMainBinding
+import java.util.concurrent.Executor
 
 class MainActivity : AppCompatActivity() {
 
     private var cancellationSignal : CancellationSignal? = null
     private val  authenticationCallback : BiometricPrompt.AuthenticationCallback
 
-    get() = @RequiresApi(Build.VERSION_CODES.P)
+    get() =
     object : BiometricPrompt.AuthenticationCallback(){
 
-        override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
             notifyUser("Authentication Error: $errString")
+            getCancellationSignal().cancel()
         }
 
-        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
             super.onAuthenticationSucceeded(result)
             notifyUser("Authentication Success")
             startActivity(Intent(this@MainActivity,SecretActivity::class.java))
@@ -35,7 +37,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
-    @RequiresApi(Build.VERSION_CODES.P)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -44,15 +45,16 @@ class MainActivity : AppCompatActivity() {
         checkBiometricSupport()
 
         binding.btnAuthenticate.setOnClickListener {
-            val  biometricPrompt = BiometricPrompt.Builder(this)
+            val  biometricPrompt = BiometricPrompt(this,MainThreadExecutor(),authenticationCallback,)
+
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Title of prompt")
                 .setSubtitle("Authenticate is required")
                 .setDescription("This app uses finger print protection to keep your data secure")
-                .setNegativeButton("Cancel",this.mainExecutor) { _, _ ->
-                    notifyUser("Authentication Cancelled")
-                }.build()
+                .setNegativeButtonText("Cancel")
+                .build()
 
-            biometricPrompt.authenticate(getCancellationSignal(),mainExecutor,authenticationCallback)
+            biometricPrompt.authenticate(promptInfo)
         }
     }
 
@@ -86,5 +88,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun notifyUser(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    class MainThreadExecutor : Executor {
+        private val handler = Handler(Looper.getMainLooper())
+
+        override fun execute(r: Runnable) {
+            handler.post(r)
+        }
     }
 }
